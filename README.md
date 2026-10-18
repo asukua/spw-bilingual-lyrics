@@ -1,8 +1,8 @@
 # spw 双语歌词顺序
 
-[下载插件](https://github.com/asukua/spw-bilingual-lyrics/releases/latest) · [源码](https://github.com/asukua/spw-bilingual-lyrics) · MIT 开源
+[Steam 创意工坊](https://steamcommunity.com/sharedfiles/filedetails/?id=3822500887) · [下载插件](https://github.com/asukua/spw-bilingual-lyrics/releases/latest) · [源码](https://github.com/asukua/spw-bilingual-lyrics) · MIT 开源
 
-将本地双语歌词整理成播放器支持的 SPL/LRC，选择“原文在上”或“译文在上”。只转换加载到内存中的显示文本，不修改音频标签或歌词文件，不联网、不翻译、不上传歌词。
+这个插件可以调整椒盐音乐桌面版里的双语歌词顺序。想把原文放在上面，还是先看译文，都可以在模组配置里选。
 
 ## 安装与使用
 
