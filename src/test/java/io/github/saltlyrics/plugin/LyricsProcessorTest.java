@@ -44,7 +44,7 @@ class LyricsProcessorTest {
     }
 
     @Test
-    void unchangedPreferredSourceDoesNotGetReplacedByLowerPrioritySource() {
+    void unsupportedPreferredSourceDoesNotGetReplacedByLowerPrioritySource() {
         AtomicInteger normalized = new AtomicInteger();
         LyricsProcessor processor = new LyricsProcessor((p, s, e) -> List.of(
                 new Candidate("preferred", "embedded"), new Candidate("other", "sidecar")), (raw, options) -> {

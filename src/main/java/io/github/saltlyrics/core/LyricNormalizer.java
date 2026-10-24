@@ -18,7 +18,8 @@ import java.util.regex.Pattern;
  * leading timestamps, independent word timing, untimed translations, and clearly
  * separated inline pairs.
  * The adapter does not decode QRC, YRC, SRT, WebVTT or XML/TTML. Empty results let
- * the host use its normal loading path, including when the text needs no change.
+ * the host use its normal loading path. The change-only normalize entry point
+ * also returns empty when the text needs no change.
  * No files, network, host state or mutable per-track state are used.</p>
  */
 public final class LyricNormalizer {
@@ -46,6 +47,22 @@ public final class LyricNormalizer {
      * assigns roles to each two-line group instead.
      */
     public Optional<String> normalize(String raw, Options options) {
+        return normalize(raw, options, false);
+    }
+
+    /**
+     * Supplies an explicit refresh document for recognized bilingual pairs,
+     * including when the source already has the requested order. Returning null
+     * to the host in that case would delegate the refreshed document elsewhere.
+     * Use only for a user-requested reload of the current media item. Ordinary
+     * loads use normalize so already matching sources stay with the host.
+     * Unsupported and ambiguous input still uses the normal host fallback.
+     */
+    public Optional<String> normalizeForPlayback(String raw, Options options) {
+        return normalize(raw, options, true);
+    }
+
+    private Optional<String> normalize(String raw, Options options, boolean includeOrderedPairs) {
         Objects.requireNonNull(options, "options");
         if (raw == null || raw.isBlank() || raw.length() > MAX_CHARACTERS || raw.indexOf('\0') >= 0) {
             return Optional.empty();
@@ -164,9 +181,13 @@ public final class LyricNormalizer {
             }
         }
         assignPairRoles(nodes, options.inputOrder());
+        boolean orderedPair = false;
         for (Node node : nodes) {
-            if (node instanceof Group group && group.firstOriginal != null
-                    && group.firstOriginal != (options.outputOrder() == Options.OutputOrder.ORIGINAL_FIRST)) {
+            if (node instanceof Group group && group.firstOriginal != null) {
+                if (group.firstOriginal == (options.outputOrder() == Options.OutputOrder.ORIGINAL_FIRST)) {
+                    orderedPair = true;
+                    continue;
+                }
                 Body first = group.bodies.get(0);
                 Body next = group.bodies.get(1);
                 // SPL takes cue timing from the main row. When only the old
@@ -182,10 +203,11 @@ public final class LyricNormalizer {
                 group.bodies.set(0, next);
                 group.bodies.set(1, first);
                 changed = true;
+                orderedPair = true;
             }
         }
         if (!changed) {
-            return Optional.empty();
+            return includeOrderedPairs && orderedPair ? Optional.of(raw) : Optional.empty();
         }
 
         List<String> output = new ArrayList<>(lines.length);

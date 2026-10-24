@@ -1,10 +1,12 @@
+import com.xuncorp.spw.workshop.gradle.PluginPermission
+
 plugins {
     `java-library`
     id("com.xuncorp.spw.workshop") version "0.1.0-dev23"
 }
 
 group = "io.github.saltlyrics"
-version = "0.1.4"
+version = "0.1.9"
 
 java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(25))
@@ -49,4 +51,5 @@ spmod {
     PluginProvider = "asukua"
     PluginOpenSourceUrl = "https://github.com/asukua/spw-bilingual-lyrics"
     PluginHasConfig = true
+    PluginPermissions = listOf(PluginPermission.CLASS_TRANSFORM)
 }

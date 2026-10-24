@@ -7,6 +7,6 @@ import org.pf4j.Extension;
 public final class LyricsExtension implements PlaybackExtensionPoint {
     @Override
     public String onBeforeLoadLyrics(MediaItem mediaItem) {
-        return BilingualLyricsPlugin.load(mediaItem.getPath());
+        return BilingualLyricsPlugin.load(mediaItem.getId(), mediaItem.getPath());
     }
 }
