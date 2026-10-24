@@ -1,6 +1,7 @@
 package io.github.saltlyrics.plugin;
 
 import io.github.saltlyrics.core.Options;
+import io.github.saltlyrics.core.LyricNormalizer;
 import io.github.saltlyrics.source.LyricSourceReader.Candidate;
 import org.junit.jupiter.api.Test;
 
@@ -11,6 +12,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 class LyricsProcessorTest {
+    @Test
+    void sourceLoadingAppliesDisplaySettingsToMixedWordTiming() {
+        String original = "か[00:30.35]細[00:30.62]い[00:30.88]火[00:31.20]が[00:31.50]";
+        String translation = "纤细的火焰";
+        LyricsProcessor processor = new LyricsProcessor((p, s, e) -> List.of(
+                new Candidate("[00:30.10]" + original + "\n[00:30.10]" + translation, "sidecar")),
+                new LyricNormalizer()::normalize);
+        PluginSettings defaults = PluginSettings.defaults();
+        PluginSettings translatedFirst = new PluginSettings(true,
+                new Options(Options.OutputOrder.TRANSLATION_FIRST, Options.InputOrder.AUTO, true),
+                defaults.source(), defaults.encoding());
+        assertEquals("[00:30.100]纤细的火焰[00:31.500]\n[00:30.100]" + original,
+                processor.load(java.nio.file.Path.of("test.mp3").toAbsolutePath().toString(), translatedFirst));
+    }
+
     @Test
     void disabledOrNonlocalPathDoesNotReadAnything() {
         AtomicInteger reads = new AtomicInteger();

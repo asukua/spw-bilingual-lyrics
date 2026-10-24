@@ -15,7 +15,8 @@ import java.util.regex.Pattern;
  * Conservative, lossless lyric-text adapter for the host's SPL parser.
  *
  * <p>Supports timestamped LRC/SPL, including detached timestamp headers, repeated
- * leading timestamps, untimed translations, and clearly separated inline pairs.
+ * leading timestamps, independent word timing, untimed translations, and clearly
+ * separated inline pairs.
  * The adapter does not decode QRC, YRC, SRT, WebVTT or XML/TTML. Empty results let
  * the host use its normal loading path, including when the text needs no change.
  * No files, network, host state or mutable per-track state are used.</p>
@@ -28,7 +29,7 @@ public final class LyricNormalizer {
     private static final Pattern STAMP = Pattern.compile(
             "\\[(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,6}))?\\]");
     private static final Pattern WORD_STAMP = Pattern.compile(
-            "(?:\\[|<)\\d{1,3}:\\d{1,2}(?:[.:]\\d{1,6})?(?:\\]|>)");
+            "(?:\\[|<)(\\d{1,3}):(\\d{1,2})(?:[.:](\\d{1,6}))?(?:\\]|>)");
     private static final Pattern TIME_CANDIDATE = Pattern.compile("[\\[<]\\d[^\\[\\]<>\\r\\n]*[\\]>]");
     private static final Pattern METADATA = Pattern.compile(
             "\\[[A-Za-z][A-Za-z0-9_-]*:[^\\]\\r\\n]*\\][ \\t]*");
@@ -40,8 +41,9 @@ public final class LyricNormalizer {
     /**
      * Returns normalized SPL only if a safe, useful change was found.
      * AUTO recognizes a Chinese translation paired with kana, Hangul, Latin or
-     * another alphabet; two Han-only lines remain ambiguous and keep their order.
-     * A manual input order assigns roles to each two-line group instead.
+     * another alphabet. Han-only pairs can inherit matching Japanese pair roles
+     * on both sides; otherwise they keep their order. A manual input order
+     * assigns roles to each two-line group instead.
      */
     public Optional<String> normalize(String raw, Options options) {
         Objects.requireNonNull(options, "options");
@@ -99,7 +101,7 @@ public final class LyricNormalizer {
                 if (timed.body().isBlank()) {
                     // A timestamp-only row still ends the previous cue, even
                     // when it also supplied a detached header for the next cue.
-                    nodes.add(new RawNode(timed.source()));
+                    nodes.add(new RawNode(timed.source(), false));
                     groups.clear();
                     previous = null;
                     continue;
@@ -115,12 +117,13 @@ public final class LyricNormalizer {
                 // timed source, including romanization that language detection
                 // cannot classify. Preserve that ownership when moving groups.
                 if (previous != null && plain.lyricCandidate() && !plain.source().isBlank()) {
+                    if (!validInteriorStamps(plain.source())) return Optional.empty();
                     for (long time : previous.times()) {
                         getGroup(time, groups, nodes).bodies.add(new Body(plain.source(), false));
                     }
                     changed = true;
                 } else {
-                    nodes.add(new RawNode(plain.source()));
+                    nodes.add(new RawNode(plain.source(), !plain.source().isBlank()));
                     if (!plain.source().isBlank()) {
                         groups.clear();
                     }
@@ -136,8 +139,9 @@ public final class LyricNormalizer {
             if (!(node instanceof Group group)) {
                 continue;
             }
-            boolean establishedPair = group.bodies.size() == 2 && distinctivePair(
-                    profile(group.bodies.get(0).text()), profile(group.bodies.get(1).text())).isPresent();
+            boolean establishedPair = group.bodies.size() == 2
+                    && (options.inputOrder() != Options.InputOrder.AUTO || distinctivePair(
+                    profile(group.bodies.get(0).text()), profile(group.bodies.get(1).text())).isPresent());
             if (options.splitInline() && !establishedPair) {
                 List<Body> expanded = new ArrayList<>(group.bodies.size());
                 for (Body body : group.bodies) {
@@ -158,22 +162,24 @@ public final class LyricNormalizer {
                     changed = true;
                 }
             }
-            // SPL permits several secondary rows. Keep those intact: guessing
-            // which one is romanization, a translation or a second voice is unsafe.
-            if (group.bodies.size() != 2) {
-                continue;
-            }
-            Optional<Boolean> firstOriginal = pairedRoles(
-                    group.bodies.get(0).text(), group.bodies.get(1).text(), options.inputOrder());
-            if (firstOriginal.isPresent()
-                    && firstOriginal.get() != (options.outputOrder() == Options.OutputOrder.ORIGINAL_FIRST)) {
-                // Moving a unique explicit end onto the secondary row can alter
-                // the main cue's duration. Leave such input entirely to the host.
-                if (!Objects.equals(explicitEnd(group.bodies.get(0).text()), explicitEnd(group.bodies.get(1).text()))) {
-                    return Optional.empty();
-                }
+        }
+        assignPairRoles(nodes, options.inputOrder());
+        for (Node node : nodes) {
+            if (node instanceof Group group && group.firstOriginal != null
+                    && group.firstOriginal != (options.outputOrder() == Options.OutputOrder.ORIGINAL_FIRST)) {
                 Body first = group.bodies.get(0);
-                group.bodies.set(0, group.bodies.get(1));
+                Body next = group.bodies.get(1);
+                // SPL takes cue timing from the main row. When only the old
+                // main row has an explicit end, carry that known boundary to
+                // the new main row too. Never infer an end from a word start.
+                Long end = explicitEnd(first.text());
+                if (end != null && explicitEnd(next.text()) == null) {
+                    if (!canCarryEnd(next.text(), group.time, end)) continue;
+                    next = new Body(next.text() + format(end), next.timed());
+                }
+                // Different explicit ends belong to their respective texts;
+                // the selected main row supplies the displayed cue's end.
+                group.bodies.set(0, next);
                 group.bodies.set(1, first);
                 changed = true;
             }
@@ -213,6 +219,50 @@ public final class LyricNormalizer {
             nodes.add(group);
         }
         return group;
+    }
+
+    private static void assignPairRoles(List<Node> nodes, Options.InputOrder inputOrder) {
+        Boolean precedingJapanese = null;
+        List<Group> ambiguous = new ArrayList<>();
+        for (Node node : nodes) {
+            if (node instanceof RawNode raw) {
+                if (raw.contextBarrier()) {
+                    precedingJapanese = null;
+                    ambiguous.clear();
+                }
+                continue;
+            }
+            Group group = (Group) node;
+            // Do not infer roles through monolingual cues or multilingual groups.
+            if (group.bodies.size() != 2) {
+                precedingJapanese = null;
+                ambiguous.clear();
+                continue;
+            }
+            String first = group.bodies.get(0).text();
+            String second = group.bodies.get(1).text();
+            group.firstOriginal = pairedRoles(first, second, inputOrder).orElse(null);
+            if (inputOrder != Options.InputOrder.AUTO) continue;
+
+            Profile a = profile(first);
+            Profile b = profile(second);
+            if (group.firstOriginal != null
+                    && (group.firstOriginal ? a.kana > 0 : b.kana > 0)) {
+                // Only directly recognized pairs are anchors. Inferred Han-only
+                // rows never become evidence for other rows, and both flanks
+                // must agree because input order can vary within one song.
+                if (group.firstOriginal.equals(precedingJapanese)) {
+                    for (Group pending : ambiguous) pending.firstOriginal = precedingJapanese;
+                }
+                ambiguous.clear();
+                precedingJapanese = group.firstOriginal;
+            } else if (a.hanOnly() && b.hanOnly()) {
+                if (precedingJapanese != null) ambiguous.add(group);
+            } else {
+                precedingJapanese = null;
+                ambiguous.clear();
+            }
+        }
     }
 
     private static boolean unsupported(String raw) {
@@ -367,9 +417,22 @@ public final class LyricNormalizer {
     private static Long explicitEnd(String body) {
         Matcher end = TRAILING_STAMP.matcher(body);
         if (!end.find()) return null;
-        String fraction = end.group(3);
+        return stampTime(end);
+    }
+
+    private static boolean canCarryEnd(String body, long start, long end) {
+        if (end < start) return false;
+        Matcher words = WORD_STAMP.matcher(body);
+        while (words.find()) {
+            if (stampTime(words) > end) return false;
+        }
+        return true;
+    }
+
+    private static long stampTime(Matcher stamp) {
+        String fraction = stamp.group(3);
         long micros = fraction == null ? 0 : Long.parseLong((fraction + "000000").substring(0, 6));
-        return (Long.parseLong(end.group(1)) * 60 + Long.parseLong(end.group(2))) * 1_000_000 + micros;
+        return (Long.parseLong(stamp.group(1)) * 60 + Long.parseLong(stamp.group(2))) * 1_000_000 + micros;
     }
 
     private static Profile profile(String text) {
@@ -420,11 +483,12 @@ public final class LyricNormalizer {
     private record TimedLine(String source, List<Long> times, String body) implements Line {}
     private record Body(String text, boolean timed) {}
     private interface Node {}
-    private record RawNode(String source) implements Node {}
+    private record RawNode(String source, boolean contextBarrier) implements Node {}
 
     private static final class Group implements Node {
         private final long time;
         private final List<Body> bodies = new ArrayList<>(2);
+        private Boolean firstOriginal;
 
         private Group(long time) {
             this.time = time;
@@ -432,6 +496,10 @@ public final class LyricNormalizer {
     }
 
     private record Profile(int han, int kana, int hangul, int latin, int other, int words) {
+        boolean hanOnly() {
+            return han > 0 && kana == 0 && hangul == 0 && latin == 0 && other == 0;
+        }
+
         boolean chinese() {
             return han > 0 && kana == 0 && hangul == 0 && other == 0 && latin <= Math.max(2, han / 3);
         }

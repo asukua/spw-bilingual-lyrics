@@ -22,12 +22,11 @@ class LyricNormalizerTest {
     }
 
     @Test
-    void reorderingWithDifferentExplicitEndsFallsBackToHost() {
-        for (String raw : new String[]{
-                "[00:01]你好[00:02]\n[00:01]Hello\n[00:10]Next",
-                "[00:01]你好[00:02]\n[00:01]Hello[00:03]"}) {
-            assertTrue(normalizer.normalize(raw, Options.defaults()).isEmpty());
-        }
+    void reorderingRetainsKnownEndOrUsesSelectedMainRowsOwnEnd() {
+        assertEquals("[00:01.000]Hello[00:02.000]\n[00:01.000]你好[00:02]\n[00:10.000]Next",
+                normalize("[00:01]你好[00:02]\n[00:01]Hello\n[00:10]Next"));
+        assertEquals("[00:01.000]Hello[00:03]\n[00:01.000]你好[00:02]",
+                normalize("[00:01]你好[00:02]\n[00:01]Hello[00:03]"));
     }
 
     @Test

@@ -6,7 +6,7 @@
       "preferences": [
         {"key": "enabled", "type": "switch", "title": "启用歌词整理", "summary": "只处理显示用的歌词，不修改音乐文件或旁挂歌词", "default_value": true},
         {"key": "output_order", "type": "list", "title": "显示顺序", "summary": "上方文本使用播放器的主歌词样式，下方使用翻译样式", "entries": ["原文在上，译文在下", "译文在上，原文在下"], "entry_values": ["ORIGINAL_FIRST", "TRANSLATION_FIRST"], "default_value": "ORIGINAL_FIRST"},
-        {"key": "input_order", "type": "list", "title": "输入歌词的顺序", "summary": "自动识别中文译文；无法判断时保留。强制顺序适合同一语言或无法识别的歌词", "entries": ["自动识别中文译文", "输入第一行为原文", "输入第一行为译文"], "entry_values": ["AUTO", "ORIGINAL_FIRST", "TRANSLATION_FIRST"], "default_value": "AUTO"},
+        {"key": "input_order", "type": "list", "title": "输入歌词的顺序", "summary": "自动识别中文译文，日文纯汉字句结合前后双语句判断；仍无法判断时保留，也可强制指定顺序", "entries": ["自动识别中文译文", "输入第一行为原文", "输入第一行为译文"], "entry_values": ["AUTO", "ORIGINAL_FIRST", "TRANSLATION_FIRST"], "default_value": "AUTO"},
         {"key": "split_inline", "type": "switch", "title": "拆分同一行里的双语歌词", "summary": "根据分隔符和文字特征拆分；中外文混唱可能需要关闭", "default_value": true},
         {"key": "source", "type": "list", "title": "歌词来源", "summary": "首个可读来源优先。若播放器使用外部歌词，请选择旁挂优先。插件无法获取播放器的自定义歌词搜索路径", "entries": ["内嵌优先，其次同名旁挂", "同名旁挂优先，其次内嵌", "仅内嵌歌词", "仅同名旁挂歌词"], "entry_values": ["EMBEDDED_FIRST", "SIDECAR_FIRST", "EMBEDDED_ONLY", "SIDECAR_ONLY"], "default_value": "EMBEDDED_FIRST"},
         {"key": "encoding", "type": "list", "title": "旁挂歌词编码", "summary": "自动：优先 BOM、UTF-8，再尝试 GB18030；日文旧编码请指定 Shift_JIS", "entries": ["自动", "UTF-8", "GB18030", "Shift_JIS", "UTF-16 小端", "UTF-16 大端"], "entry_values": ["AUTO", "UTF8", "GB18030", "SHIFT_JIS", "UTF16LE", "UTF16BE"], "default_value": "AUTO"}
